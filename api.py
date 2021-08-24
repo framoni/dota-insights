@@ -36,14 +36,15 @@ def get_mid_players(timestamp, n_recent, limit):
     pm = json.loads(pm.text)['rows']
     with open('pm_from_{}.json'.format(timestamp), 'w') as f:
         f.write(json.dumps(pm))
-    for it in enumerate(pm):
-        print(it['match_id'])
+    for it in pm:
         match = requests.request("GET", match_url.format(it['match_id']), headers=headers, data=payload)
         time.sleep(1)
         match = json.loads(match.text)
         for p in match['players']:
             try:
-                if p['lane_role'] == MID_ROLE and p['account_id'] is not None and p['account_id'] not in mid_players:
+                if p['lane_role'] == MID_ROLE and p['account_id'] is not None \
+                        and p['account_id'] not in mid_players and is_bad(p):
+                    print(it['match_id'])
                     wl = get_wl(p['account_id'],  it['match_id'], n_recent)
                     if wl:
                         mid_players.append(p['account_id'])
@@ -76,6 +77,11 @@ def get_wl(player_id, match_id, n_recent=10):
             return None
     else:
         return None
+
+
+def is_bad(player, kd_th=1.5, gxp_th=500):
+    return (player['deaths']+1)/(player['kills']+1) >= kd_th or \
+           player['gold_per_min'] < gxp_th or player['xp_per_min'] < gxp_th
 
 
 if __name__ == '__main__':
