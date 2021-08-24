@@ -7,10 +7,11 @@ https://github.com/odota/web/blob/master/src/lang/en-US.json
 
 '''
 
-* fetch public matches starting from a fixed date and withing a certain MMR range
+* fetch public matches starting from a fixed date, within a certain MMR range, game mode Ranked and lobby type All Draft
 * get data about found matches
 * if exposed player is found with lane_role = 2
     * get info about his N most recent matches
+    * if the N matches are all Ranked and All Draft, return win rate
 
 '''
 
@@ -26,13 +27,14 @@ pm_url = "https://api.opendota.com/api/explorer?sql=SELECT * \
 
 match_url = "https://api.opendota.com/api/matches/{}"
 
+rm_url = "https://api.opendota.com/api/players/{}/recentMatches"
+
 payload = {}
 headers = {}
 
-if __name__ == '__main__':
 
+def get_mid_players():
     mid_players = []
-
     pm = requests.request("GET", pm_url, headers=headers, data=payload)
     pm = json.loads(pm.text)['rows']
     for it in pm:
@@ -45,3 +47,19 @@ if __name__ == '__main__':
                     break
             except KeyError:
                 continue
+    return mid_players
+
+
+def get_wl(player_id, n_recent=10):
+    rm = requests.request("GET", rm_url.format(player_id), headers=headers, data=payload)
+    rm = json.loads(rm.text)[:n_recent]
+    if all([it['lobby_type']==7 and it['game_mode']==22 for it in rm]):
+        return sum(
+            [(it['radiant_win'] and it['player_slot'] in [1, 2, 3, 4, 5]) or
+             (not(it['radiant_win']) and it['player_slot'] not in [1, 2, 3, 4, 5]) for it in rm]
+        )
+
+
+if __name__ == '__main__':
+    print(get_mid_players())
+    get_wl(295280530, n_recent=10)
