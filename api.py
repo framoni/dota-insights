@@ -5,10 +5,12 @@ https://github.com/odota/web/blob/master/src/lang/en-US.json
 
 """
 
-import csv
 import json
+import pandas as pd
 import requests
 import time
+from tqdm import tqdm
+
 
 N_RECENT = 20
 MID_ROLE = 2
@@ -30,13 +32,14 @@ headers = {}
 
 
 def get_mid_players(timestamp, n_recent, limit):
+    mid_players_df = pd.DataFrame(columns=['match_id', 'player_id', 'win_rate'])
     mid_players = []
-    wl_list = []
-    pm = requests.request("GET", pm_url.format(timestamp, LOBBY_ALL_DRAFT, GAME_MODE_RANKED, NUM_MMR_LOW_SKILL), headers=headers, data=payload)
+    pm = requests.request("GET", pm_url.format(timestamp, LOBBY_ALL_DRAFT, GAME_MODE_RANKED, NUM_MMR_LOW_SKILL),
+                          headers=headers, data=payload)
     pm = json.loads(pm.text)['rows']
     with open('pm_from_{}.json'.format(timestamp), 'w') as f:
         f.write(json.dumps(pm))
-    for it in pm:
+    for it in tqdm(pm):
         match = requests.request("GET", match_url.format(it['match_id']), headers=headers, data=payload)
         time.sleep(1)
         match = json.loads(match.text)
@@ -44,28 +47,28 @@ def get_mid_players(timestamp, n_recent, limit):
             try:
                 if p['lane_role'] == MID_ROLE and p['account_id'] is not None \
                         and p['account_id'] not in mid_players and is_bad(p):
-                    print(it['match_id'])
-                    wl = get_wl(p['account_id'],  it['match_id'], n_recent)
+                    wl = get_wl(p['account_id'], it['match_id'], n_recent)
                     if wl:
+                        mid_players_df = mid_players_df.append({'match_id': it['match_id'],
+                                                                'player_id': p['account_id'],
+                                                                'win_rate': wl / n_recent}, ignore_index=True,)
+                        mid_players_df.to_csv('wl_n_{}_from_{}.csv'.format(n_recent, timestamp), index=False)
                         mid_players.append(p['account_id'])
-                        print("mids: {}".format(len(mid_players)))
-                        wl_list.append(wl)
-                        with open('wl_n_{}_from_{}.csv'.format(n_recent, timestamp), 'w', newline='') as f:
-                            wr = csv.writer(f, quoting=csv.QUOTE_ALL)
-                            wr.writerow(wl)
-                        with open('players_mid_low_skill.csv', 'w', newline='') as f:
-                            wr = csv.writer(f, quoting=csv.QUOTE_ALL)
-                            wr.writerow(mid_players)
-                        if len(mid_players == limit):
-                          return
+                        if len(mid_players) == limit:
+                            print('Limit of found players is reached')
+                            return
                     break
             except KeyError:
                 continue
+    mid_players_df.to_csv('wl_n_{}_from_{}.csv'.format(n_recent, timestamp), index=False)
 
 
 def get_wl(player_id, match_id, n_recent=10):
     rm = requests.request("GET", rm_url.format(player_id), headers=headers, data=payload)
-    idx = [index for index, value in enumerate(rm) if value['match_id'] == match_id][0]
+    try:
+        idx = [index for index, value in enumerate(json.loads(rm.text)) if value['match_id'] == match_id][0]
+    except IndexError:
+        return None
     if idx <= N_RECENT - n_recent:
         rm = json.loads(rm.text)[idx:idx+n_recent]
         if all([it['lobby_type'] == 7 and it['game_mode'] == 22 for it in rm]):
@@ -96,6 +99,7 @@ if __name__ == '__main__':
 
     n_recent = 10
     from_date = '2021-08-21T00:00:00.000Z'
+    # from_date = '2021-09-01T00:00:00.000Z'
 
     get_mid_players(from_date, n_recent, limit=500)
 
